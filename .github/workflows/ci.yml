@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build-test-coverage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test with coverage
+        run: >
+          dotnet test
+          --no-build
+          --configuration Release
+          --settings coverage.runsettings
+          --collect:"XPlat Code Coverage"
+          --results-directory ./coverage
+
+      - name: Install ReportGenerator
+        run: dotnet tool install --global dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: >
+          reportgenerator
+          -reports:"./coverage/**/coverage.cobertura.xml"
+          -targetdir:"./coverage/report"
+          -reporttypes:"Html;MarkdownSummary"
+
+      - name: Post coverage summary
+        run: cat ./coverage/report/Summary.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-report
+          path: ./coverage/report
+          retention-days: 30
+
+  docker-build:
+    needs: build-test-coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build Docker image
+        run: docker build -t longestincreasingsubsequence .
